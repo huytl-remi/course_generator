@@ -24,20 +24,31 @@ Output Format:
 """
 
 STRUCTURE_PROMPT = """Generate a detailed course structure based on the course info.
-All content must be in the specified language and appropriate for the difficulty level.
+All content must be in the specified language and match the requested tone.
 
 CORE RULES:
-1. Structure:
-   - 3-5 main sections
-   - 2-4 lessons per section
-   - Each lesson: 30-120 minutes
-   - Adapt complexity to specified difficulty level
+1. Structure Sources:
+   - If Table of Contents provided: use as primary structure guide
+   - If Content Preview provided: analyze for topic hierarchy
+   - If Main Content provided: use as direct outline
+   - Blend multiple sources intelligently if available
 
-2. Content Requirements:
-   - Clear progression
-   - Logical flow
-   - Match prerequisites to outcomes
-   - Appropriate for difficulty level
+2. Time Management:
+   - Course must fit within specified course_duration (hours)
+   - Each lesson must match specified lesson_length (minutes)
+   - Number of sections and lessons calculated based on total duration
+
+3. Audience Adaptation:
+   - Flow should match audience familiarity level
+   - Language and examples should resonate with age range
+   - Maintain consistent tone throughout
+   - Examples and analogies age-appropriate
+
+4. Content Requirements:
+   - Clear progression matching familiarity level
+   - Address specified needs and interests
+   - Maintain engagement with selected tone
+   - Respect content complexity for audience
 
 Output Format:
 {
@@ -48,7 +59,7 @@ Output Format:
             "lessons": [
                 {
                     "title": str,
-                    "duration": int,  # minutes
+                    "duration": int,  # exactly match lesson_length
                     "key_points": [str]
                 }
             ]
@@ -84,44 +95,44 @@ Output Format:
 }
 """
 
-QUIZ_PROMPT = """Generate quiz questions based on the lesson content.
-All content must be in the specified language and appropriate for the difficulty level.
+# QUIZ_PROMPT = """Generate quiz questions based on the lesson content.
+# All content must be in the specified language and appropriate for the difficulty level.
 
-RULES:
-1. Question Mix (adapt to difficulty level):
-   Grade 1-6:
-   - Simple multiple choice
-   - Basic true/false
-   - Focus on recall
+# RULES:
+# 1. Question Mix (adapt to difficulty level):
+#    Grade 1-6:
+#    - Simple multiple choice
+#    - Basic true/false
+#    - Focus on recall
 
-   Grade 7-12:
-   - Multiple choice with reasoning
-   - True/false with explanation
-   - Understanding and application
+#    Grade 7-12:
+#    - Multiple choice with reasoning
+#    - True/false with explanation
+#    - Understanding and application
 
-   College/Professional:
-   - Complex scenarios
-   - Application-based questions
-   - Critical thinking
+#    College/Professional:
+#    - Complex scenarios
+#    - Application-based questions
+#    - Critical thinking
 
-2. Number of Questions:
-   - 2-3 multiple choice
-   - 1-2 true/false
+# 2. Number of Questions:
+#    - 2-3 multiple choice
+#    - 1-2 true/false
 
-Output Format:
-{
-    "questions": [
-        {
-            "type": "multiple_choice|true_false",
-            "question": str,
-            "choices": [
-                {
-                    "text": str,
-                    "is_correct": bool
-                }
-            ],
-            "explanation": str
-        }
-    ]
-}
-"""
+# Output Format:
+# {
+#     "questions": [
+#         {
+#             "type": "multiple_choice|true_false",
+#             "question": str,
+#             "choices": [
+#                 {
+#                     "text": str,
+#                     "is_correct": bool
+#                 }
+#             ],
+#             "explanation": str
+#         }
+#     ]
+# }
+# """
