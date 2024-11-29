@@ -1,7 +1,25 @@
-COURSE_INFO_PROMPT = """You are an expert course designer. Create a course structure based on the provided content.
-The content must be generated in the specified language.
+TOC_EXTRACTION_PROMPT = """You are a Table of Contents extraction specialist.
+Your ONLY job is to find and extract the exact table of contents from this text.
 
-CORE RULES:
+RULES:
+1. Return ONLY the raw table of contents exactly as it appears
+2. Include all numbering, indentation, and formatting
+3. If you find multiple potential ToCs, choose the most comprehensive one
+4. If no clear ToC exists, respond with "NO_TOC_FOUND"
+
+DO NOT:
+- Modify the text
+- Add explanations
+- Suggest improvements
+- Generate your own structure
+
+Just the raw ToC. Nothing else.
+"""
+
+COURSE_INFO_PROMPT = """You are an expert course designer. Create course info based on the provided content.
+If a table of contents is provided, use it to inform your course name and description.
+
+RULES:
 1. Course Name:
    - Max 10 words
    - Clear and engaging
@@ -10,129 +28,79 @@ CORE RULES:
 
 2. Course Info Requirements:
    - Description: 50-100 words in the specified language
-   - Prerequisites: What learners need to know
+   - Prerequisites: List any assumed knowledge
    - Learning Outcomes: What they'll achieve
-   - All content must be in the specified language and appropriate for the difficulty level
+   - Maintain consistent tone throughout
+   - Language and complexity appropriate for specified age range
 
 Output Format:
 {
     "course_name": str,         # max 10 words
     "description": str,         # 50-100 words
     "prerequisites": str,       # clear list
-    "learning_outcomes": [str], # 3-5 concrete outcomes
+    "learning_outcomes": [str]  # 3-5 concrete outcomes
 }
 """
 
-STRUCTURE_PROMPT = """Generate a detailed course structure based on the course info.
-All content must be in the specified language and match the requested tone.
+SECTION_GENERATION_PROMPT = """Generate a course outline based on the provided table of contents.
+Maintain the original structure while adapting it to our course format.
 
-CORE RULES:
-1. Structure Sources:
-   - If Table of Contents provided: use as primary structure guide
-   - If Content Preview provided: analyze for topic hierarchy
-   - If Main Content provided: use as direct outline
-   - Blend multiple sources intelligently if available
-
-2. Time Management:
-   - Course must fit within specified course_duration (hours)
-   - Each lesson must match specified lesson_length (minutes)
-   - Number of sections and lessons calculated based on total duration
-
-3. Audience Adaptation:
-   - Flow should match audience familiarity level
-   - Language and examples should resonate with age range
-   - Maintain consistent tone throughout
-   - Examples and analogies age-appropriate
-
-4. Content Requirements:
-   - Clear progression matching familiarity level
-   - Address specified needs and interests
-   - Maintain engagement with selected tone
-   - Respect content complexity for audience
+RULES:
+1. Follow the provided ToC structure closely
+2. Maintain original section ordering
+3. Keep original section titles where possible
+4. Add brief descriptions for each section
+5. Ensure content matches specified:
+   - Difficulty level
+   - Age range
+   - Time constraints
+   - Tone preferences
 
 Output Format:
 {
     "sections": [
         {
             "title": str,
-            "description": str,
-            "lessons": [
-                {
-                    "title": str,
-                    "duration": int,  # exactly match lesson_length
-                    "key_points": [str]
-                }
-            ]
+            "description": str,  # 2-3 sentences about this section
+            "estimated_time": int  # minutes
         }
     ]
 }
 """
 
-LESSON_PROMPT = """Create detailed content for the lesson using the reference material.
-All content must be in the specified language and appropriate for the difficulty level.
+LESSON_GENERATION_PROMPT = """Create detailed lessons for each section.
+Maintain consistent style and difficulty throughout.
 
-CORE RULES:
-1. Content Must Include:
-   - Clear explanation
-   - Key concepts (3-5)
-   - Practical examples
-   - Main takeaways
-   - Adapt to difficulty level
+RULES:
+1. Each lesson should:
+   - Match specified lesson_length
+   - Build on previous content
+   - Include practical examples
+   - Match tone and complexity requirements
+
+2. Key points MUST have:
+   - "concept": the main idea (NEVER use "exception" as a key)
+   - "explanation": detailed breakdown
+   - Clear, concise language
+   - Build on previous points
 
 Output Format:
 {
-    "lesson_content": {
-        "overview": str,
-        "key_points": [
-            {
-                "concept": str,
-                "explanation": str
+    "lessons": [
+        {
+            "title": str,
+            "duration": int,  # in minutes
+            "lesson_content": {
+                "key_points": [
+                    {
+                        "concept": str,  # ALWAYS use "concept" as the key
+                        "explanation": str
+                    }
+                ],
+                "examples": [str],
+                "takeaways": [str]
             }
-        ],
-        "examples": [str],
-        "takeaways": [str]
-    }
+        }
+    ]
 }
 """
-
-# QUIZ_PROMPT = """Generate quiz questions based on the lesson content.
-# All content must be in the specified language and appropriate for the difficulty level.
-
-# RULES:
-# 1. Question Mix (adapt to difficulty level):
-#    Grade 1-6:
-#    - Simple multiple choice
-#    - Basic true/false
-#    - Focus on recall
-
-#    Grade 7-12:
-#    - Multiple choice with reasoning
-#    - True/false with explanation
-#    - Understanding and application
-
-#    College/Professional:
-#    - Complex scenarios
-#    - Application-based questions
-#    - Critical thinking
-
-# 2. Number of Questions:
-#    - 2-3 multiple choice
-#    - 1-2 true/false
-
-# Output Format:
-# {
-#     "questions": [
-#         {
-#             "type": "multiple_choice|true_false",
-#             "question": str,
-#             "choices": [
-#                 {
-#                     "text": str,
-#                     "is_correct": bool
-#                 }
-#             ],
-#             "explanation": str
-#         }
-#     ]
-# }
-# """

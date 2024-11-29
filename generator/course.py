@@ -2,55 +2,42 @@ import json
 from openai import OpenAI
 import time
 import re
-import streamlit as st
 from .prompts import *
-from utils.file_handler import ensure_vector_store_ready, cleanup_vector_store
+from utils.file_handler import ensure_vector_store_ready, cleanup_vector_store, process_files_for_content
+import streamlit as st
 
 class CourseGenerator:
-    def __init__(self, client: OpenAI, model="gpt-4-0125-preview"):
+    def __init__(self, client: OpenAI, model="gpt-4o-mini"):
         self.client = client
         self.model = model
         self.assistant_id = None
         self.thread_id = None
-        self.structure_prompt = STRUCTURE_PROMPT  # keep a modifiable copy
+        self.raw_content = None
+        self.structure = None
 
-    def update_structure_prompt(self, extracted_content):
-        """
-        spice up the structure prompt with archaeological findings
-        """
-        context = ""
+    def process_files(self, uploaded_files):
+        """extract content from files"""
+        st.write("🏺 beginning content extraction...")
 
-        if extracted_content["toc_found"]:
-            context += f"""
-REFERENCE TABLE OF CONTENTS:
---------------------------
-{extracted_content['toc_content']}
---------------------------
+        extracted = process_files_for_content(uploaded_files)
+        if extracted:
+            self.raw_content = extracted["content"]
+            st.write("✨ content extraction complete!")
+            return True
 
-Use this table of contents as primary structural guide while maintaining course requirements.
-"""
-
-        if extracted_content["content_preview"]:
-            context += f"""
-CONTENT PREVIEW:
---------------
-{extracted_content['content_preview']}
---------------
-
-Use this content to inform depth and complexity of lessons.
-"""
-
-        self.structure_prompt = f"{STRUCTURE_PROMPT}\n\n{context}"
+        st.warning("couldn't extract content from files")
+        return False
 
     def init_assistant(self, vector_store_id=None):
-        """initialize our AI teaching assistant"""
+        """set up our AI teaching assistant"""
+        st.write("🤖 initializing AI assistant...")
         assistant = self.client.beta.assistants.create(
             name="Course Generator",
-            instructions="""You are an expert course designer with a talent for:
-            1. Structuring knowledge effectively
-            2. Adapting content to audience level
-            3. Maintaining consistent tone and engagement
-            4. Breaking complex topics into digestible lessons""",
+            instructions="""You are an expert course designer with:
+            1. Perfect content structure detection
+            2. Audience adaptation skills
+            3. Consistent tone maintenance
+            4. Complex topic breakdown abilities""",
             model=self.model,
             tools=[{"type": "file_search"}]
         )
@@ -64,9 +51,145 @@ Use this content to inform depth and complexity of lessons.
 
         thread = self.client.beta.threads.create()
         self.thread_id = thread.id
+        st.write("✅ assistant ready!")
+
+    def extract_toc(self):
+        """let AI find any structure in our content"""
+        if not self.raw_content:
+            st.error("no content to analyze!")
+            return None
+
+        if not self.thread_id:
+            st.error("assistant not initialized!")
+            return None
+
+        st.write("🔍 analyzing content structure...")
+
+        response = self._generate_step(
+            TOC_EXTRACTION_PROMPT,
+            {"content": self.raw_content}
+        )
+
+        if isinstance(response, str):
+            found = response != "NO_STRUCTURE_FOUND"
+            if found:
+                st.write("🎯 found structure!")
+                st.code(response, language="text")
+                self.structure = response
+                return response
+            st.write("⚠️ no clear structure found")
+            return None
+
+        st.error("unexpected response format")
+        return None
+
+    def generate_course_info(self, user_input):
+        """generate course info using any structure we found"""
+        st.write("🎨 crafting course info...")
+
+        context = {**user_input}
+        if self.structure:
+            context["extracted_structure"] = self.structure
+        if self.raw_content:
+            context["content_preview"] = self.raw_content
+
+        course_info = self._generate_step(
+            COURSE_INFO_PROMPT,
+            context
+        )
+
+        st.write("✅ course info crafted!")
+        return course_info
+
+    def generate_sections(self, user_input, course_info):
+        """generate course sections"""
+        st.write("📑 structuring course sections...")
+
+        context = {**user_input, **course_info}
+        if self.structure:
+            context["extracted_structure"] = self.structure
+        if self.raw_content:
+            context["content_preview"] = self.raw_content
+
+        sections = self._generate_step(
+            SECTION_GENERATION_PROMPT,
+            context
+        )
+
+        st.write("✅ sections structured!")
+        return sections
+
+    def generate_lessons_for_section(self, user_input, course_info, section):
+        """generate lessons for ONE spicy section"""
+        st.write(f"📚 crafting lessons for: {section['title']}")
+
+        context = {
+            **user_input,
+            **course_info,
+            "section": section,
+            # giving it some extra context about where we are in the course
+            "current_section_time": section["estimated_time"],
+            "total_lessons_needed": max(1, section["estimated_time"] // user_input["structure"]["lesson_length"])
+        }
+
+        if self.structure:
+            context["extracted_structure"] = self.structure
+
+        lessons = self._generate_step(
+            LESSON_GENERATION_PROMPT,
+            context
+        )
+
+        st.write(f"✨ generated {len(lessons['lessons'])} lessons!")
+        return {
+            "section_title": section["title"],
+            "section_description": section["description"],
+            "lessons": lessons["lessons"]
+        }
+
+    def _generate_step(self, prompt, context):
+        """run a single generation step with spicy logging"""
+        st.write("🤖 preparing to generate...")
+
+        with st.expander("🔍 view prompt"):
+            st.code(prompt, language="text")
+        with st.expander("📦 view context"):
+            st.code(json.dumps(context, indent=2), language="json")
+
+        message = self.client.beta.threads.messages.create(
+            thread_id=self.thread_id,
+            role="user",
+            content=f"{prompt}\n\nContext: {json.dumps(context)}"
+        )
+
+        st.write("⏳ waiting for response...")
+        run = self.client.beta.threads.runs.create(
+            thread_id=self.thread_id,
+            assistant_id=self.assistant_id
+        )
+
+        run = self.wait_for_run(run.id)
+
+        messages = self.client.beta.threads.messages.list(thread_id=self.thread_id)
+        for msg in messages.data:
+            if msg.role == "assistant":
+                content = msg.content[0].text.value.strip()
+                st.write("📥 got response from assistant")
+                with st.expander("🔍 view raw response"):
+                    st.code(content, language="text")
+
+                # ToC extraction might return just a string
+                if prompt == TOC_EXTRACTION_PROMPT:
+                    if content.startswith("{"):
+                        return self.extract_json_from_response(content)
+                    return content.strip()
+
+                return self.extract_json_from_response(content)
+
+        raise Exception("no valid response from assistant - this is AWKWARD")
 
     def wait_for_run(self, run_id):
-        """wait for the assistant to finish cooking"""
+        """patiently wait for our AI to cook up some content"""
         while True:
             run = self.client.beta.threads.runs.retrieve(
                 thread_id=self.thread_id,
@@ -75,88 +198,73 @@ Use this content to inform depth and complexity of lessons.
             if run.status == "completed":
                 return run
             elif run.status in ["failed", "expired"]:
-                raise Exception(f"Run failed: {run.last_error}")
+                raise Exception(f"run failed: {run.last_error}")
             time.sleep(1)
 
     def extract_json_from_response(self, content):
-        """
-        archaeologist mode: dig through assistant's response for json
-        handles both markdown and raw json formats
-        """
-        # first try: markdown code block
-        match = re.search(r"```(?:json)?\n(.*?)\n```", content, re.DOTALL)
-        if match:
-            try:
-                return json.loads(match.group(1).strip())
-            except json.JSONDecodeError as e:
-                print(f"Failed to parse markdown json: {e}")
+        """parse json from response with MAXIMUM PREJUDICE"""
+        st.write("🔍 attempting to parse response...")
 
-        # second try: raw json
+        # first try: clean up obvious issues
+        def clean_json_string(s):
+            # fix common issues that break json
+            fixes = [
+                (r'(?<!\\)"(\w+)": ', r'"\1": '),  # fix unquoted property names
+                (r',(\s*[}\]])', r'\1'),           # remove trailing commas
+                (r'\\([^"])', r'\\\\\1'),          # escape backslashes
+                (r'(?<!\\)\\(?!["\\])', r'\\\\'),  # escape remaining backslashes
+            ]
+            for pattern, replacement in fixes:
+                s = re.sub(pattern, replacement, s)
+            return s
+
+        def extract_json_block(s):
+            # try to find json block
+            patterns = [
+                r'```(?:json)?\n(.*?)\n```',  # markdown code block
+                r'{[\s\S]*}',                 # raw json object
+                r'\[[\s\S]*\]'                # raw json array
+            ]
+            for pattern in patterns:
+                match = re.search(pattern, s, re.DOTALL)
+                if match:
+                    return match.group(1) if pattern.startswith('```') else match.group(0)
+            return s
+
         try:
-            return json.loads(content)
+            # get potential json block
+            json_str = extract_json_block(content)
+            st.write("found potential json block:")
+            st.code(json_str[:200] + "..." if len(json_str) > 200 else json_str)
+
+            # clean it up
+            cleaned = clean_json_string(json_str)
+
+            # try to parse
+            try:
+                return json.loads(cleaned)
+            except json.JSONDecodeError as e1:
+                st.write(f"💥 failed to parse cleaned json: {str(e1)}")
+                st.write("attempting to parse original...")
+                return json.loads(json_str)
+
         except json.JSONDecodeError as e:
-            raise Exception(f"No valid JSON found in response: {str(e)}\nRaw content: {content}")
+            st.error("💥 json parsing failed!")
+            st.write("problematic content:")
+            st.code(content)
 
-    def _generate_step(self, prompt, context):
-            """run a single generation step with SPICY logging"""
-            st.write("🤖 preparing to generate...")
+            # show exact error location
+            error_msg = str(e)
+            if "line" in error_msg and "column" in error_msg:
+                line_no = int(re.search(r"line (\d+)", error_msg).group(1))
+                col_no = int(re.search(r"column (\d+)", error_msg).group(1))
 
-            # log what we're sending
-            st.write("📤 sending to assistant:")
-            st.expander("🔍 view prompt").code(prompt[:200] + "...", language="text")
-            st.expander("📦 view context").code(str(context)[:200] + "...", language="json")
+                lines = content.split("\n")
+                st.write("error location:")
+                for i in range(max(0, line_no-2), min(len(lines), line_no+1)):
+                    prefix = ">>> " if i == line_no-1 else "    "
+                    st.code(f"{prefix}{lines[i]}")
+                    if i == line_no-1:
+                        st.code(f"    {' '*(col_no-1)}^")
 
-            message = self.client.beta.threads.messages.create(
-                thread_id=self.thread_id,
-                role="user",
-                content=f"{prompt}\n\nContext: {json.dumps(context)}"
-            )
-
-            st.write("⏳ waiting for response...")
-            run = self.client.beta.threads.runs.create(
-                thread_id=self.thread_id,
-                assistant_id=self.assistant_id
-            )
-
-            run = self.wait_for_run(run.id)
-
-            messages = self.client.beta.threads.messages.list(thread_id=self.thread_id)
-            for msg in messages.data:
-                if msg.role == "assistant":
-                    content = msg.content[0].text.value.strip()
-                    st.write("📥 got response from assistant")
-                    st.expander("🔍 view raw response").code(content[:200] + "...", language="text")
-
-                    parsed = self.extract_json_from_response(content)
-                    st.write("✅ successfully parsed JSON response")
-                    return parsed
-
-            raise Exception("no valid response from assistant")
-
-    def generate_course(self, user_input):
-        """
-        the main course generation pipeline
-        now with archaeology support!
-        """
-        # generate course info
-        course_info = self._generate_step(COURSE_INFO_PROMPT, context=user_input)
-
-        # generate structure (using potentially archaeologically enhanced prompt)
-        structure = self._generate_step(
-            self.structure_prompt,  # this might have our excavated content
-            context={**user_input, **course_info}
-        )
-
-        # generate detailed lesson content
-        for section in structure["sections"]:
-            for lesson in section["lessons"]:
-                lesson_content = self._generate_step(
-                    LESSON_PROMPT,
-                    context={**user_input, **lesson}
-                )
-                lesson.update(lesson_content)
-
-        return {
-            "course_info": course_info,
-            "structure": structure
-        }
+            raise Exception(f"no valid JSON found: {str(e)}")

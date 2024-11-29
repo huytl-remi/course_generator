@@ -1,9 +1,13 @@
-import tempfile
 from pathlib import Path
+import tempfile
 from openai import OpenAI
 import time
+import PyPDF2
+from io import BytesIO
+import streamlit as st
 
 def process_uploaded_file(client: OpenAI, uploaded_files):
+    """handle file uploads for vector store"""
     vector_store = client.beta.vector_stores.create(name="Dynamic Vector Store")
     file_ids = []
 
@@ -24,6 +28,7 @@ def process_uploaded_file(client: OpenAI, uploaded_files):
     return vector_store.id
 
 def ensure_vector_store_ready(client: OpenAI, vector_store_id):
+    """wait for vector store to be ready"""
     while True:
         vector_store = client.beta.vector_stores.retrieve(vector_store_id)
         if vector_store.status == "completed":
@@ -33,7 +38,44 @@ def ensure_vector_store_ready(client: OpenAI, vector_store_id):
         time.sleep(1)
 
 def cleanup_vector_store(client: OpenAI, vector_store_id):
+    """cleanup after ourselves"""
     try:
         client.beta.vector_stores.delete(vector_store_id)
     except Exception as e:
         print(f"Failed to delete vector store: {e}")
+
+def extract_text_from_pdf(file, pages=5) -> str:
+    """yeet some pages from a pdf"""
+    st.write(f"📄 grabbing first {pages} pages...")
+
+    try:
+        pdf_bytes = BytesIO(file.getvalue())
+        pdf_reader = PyPDF2.PdfReader(pdf_bytes)
+
+        content = ""
+        for i in range(min(pages, len(pdf_reader.pages))):
+            content += pdf_reader.pages[i].extract_text() + "\n"
+
+        st.write(f"✨ extracted {len(content)} chars")
+        return content
+
+    except Exception as e:
+        st.error(f"💥 pdf error: {str(e)}")
+        return ""
+
+def process_files_for_content(uploaded_files):
+    """simplified archaeology: just grab text and yeet it at AI"""
+    st.write("🔍 extracting content...")
+
+    for file in uploaded_files:
+        if file.name.lower().endswith('.pdf'):
+            content = extract_text_from_pdf(file)
+        else:
+            content = file.getvalue().decode('utf-8', errors='ignore')
+
+        if content:
+            with st.expander(f"preview from {file.name}"):
+                st.code(content[:500] + "..." if len(content) > 500 else content)
+            return {"content": content}
+
+    return None
