@@ -1,3 +1,5 @@
+"""Core course generation logic using OpenAI's API"""
+
 import json
 from openai import OpenAI
 import time
@@ -17,20 +19,16 @@ class CourseGenerator:
 
     def process_files(self, uploaded_files):
         """extract content from files"""
-        st.write("🏺 beginning content extraction...")
-
         extracted = process_files_for_content(uploaded_files)
         if extracted:
             self.raw_content = extracted["content"]
-            st.write("✨ content extraction complete!")
             return True
 
-        st.warning("couldn't extract content from files")
+        st.warning("no content found in files")
         return False
 
     def init_assistant(self, vector_store_id=None):
         """set up our AI teaching assistant"""
-        st.write("🤖 initializing AI assistant...")
         assistant = self.client.beta.assistants.create(
             name="Course Generator",
             instructions="""You are an expert course designer with:
@@ -51,7 +49,7 @@ class CourseGenerator:
 
         thread = self.client.beta.threads.create()
         self.thread_id = thread.id
-        st.write("✅ assistant ready!")
+        # assistant setup complete
 
     def extract_toc(self):
         """let AI find any structure in our content"""
@@ -62,8 +60,6 @@ class CourseGenerator:
         if not self.thread_id:
             st.error("assistant not initialized!")
             return None
-
-        st.write("🔍 analyzing content structure...")
 
         response = self._generate_step(
             TOC_EXTRACTION_PROMPT,
@@ -119,15 +115,28 @@ class CourseGenerator:
         st.write("✅ sections structured!")
         return sections
 
-    def generate_lessons_for_section(self, user_input, course_info, section):
-        """generate lessons for ONE spicy section"""
-        st.write(f"📚 crafting lessons for: {section['title']}")
+    def generate_lesson_detail(self, user_input, course_info, section_title, lesson):
+        """generate detailed content for a specific lesson"""
+        context = {
+            **user_input,
+            **course_info,
+            "section_title": section_title,
+            "lesson": lesson
+        }
 
+        details = self._generate_step(
+            LESSON_DETAIL_PROMPT,
+            context
+        )
+
+        return details
+
+    def generate_lessons_for_section(self, user_input, course_info, section):
+        """generate lesson outlines for ONE spicy section"""
         context = {
             **user_input,
             **course_info,
             "section": section,
-            # giving it some extra context about where we are in the course
             "current_section_time": section["estimated_time"],
             "total_lessons_needed": max(1, section["estimated_time"] // user_input["structure"]["lesson_length"])
         }
@@ -140,7 +149,6 @@ class CourseGenerator:
             context
         )
 
-        st.write(f"✨ generated {len(lessons['lessons'])} lessons!")
         return {
             "section_title": section["title"],
             "section_description": section["description"],
@@ -148,35 +156,32 @@ class CourseGenerator:
         }
 
     def _generate_step(self, prompt, context):
-        """run a single generation step with spicy logging"""
-        st.write("🤖 preparing to generate...")
-
-        with st.expander("🔍 view prompt"):
-            st.code(prompt, language="text")
-        with st.expander("📦 view context"):
-            st.code(json.dumps(context, indent=2), language="json")
-
+        """run a single generation step"""
+        # create message
         message = self.client.beta.threads.messages.create(
             thread_id=self.thread_id,
             role="user",
             content=f"{prompt}\n\nContext: {json.dumps(context)}"
         )
 
-        st.write("⏳ waiting for response...")
+        # show minimal progress indicator
+        progress_text = st.empty()
+        progress_text.text("generating...")
+
+        # run assistant
         run = self.client.beta.threads.runs.create(
             thread_id=self.thread_id,
             assistant_id=self.assistant_id
         )
 
         run = self.wait_for_run(run.id)
+        progress_text.empty()
 
+        # get response
         messages = self.client.beta.threads.messages.list(thread_id=self.thread_id)
         for msg in messages.data:
             if msg.role == "assistant":
                 content = msg.content[0].text.value.strip()
-                st.write("📥 got response from assistant")
-                with st.expander("🔍 view raw response"):
-                    st.code(content, language="text")
 
                 # ToC extraction might return just a string
                 if prompt == TOC_EXTRACTION_PROMPT:

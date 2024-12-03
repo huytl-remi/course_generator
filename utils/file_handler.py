@@ -1,3 +1,5 @@
+"""File processing utilities for handling uploads and vector stores"""
+
 from pathlib import Path
 import tempfile
 from openai import OpenAI
@@ -45,9 +47,7 @@ def cleanup_vector_store(client: OpenAI, vector_store_id):
         print(f"Failed to delete vector store: {e}")
 
 def extract_text_from_pdf(file, pages=5) -> str:
-    """yeet some pages from a pdf"""
-    st.write(f"📄 grabbing first {pages} pages...")
-
+    """extract text from first few pages of pdf"""
     try:
         pdf_bytes = BytesIO(file.getvalue())
         pdf_reader = PyPDF2.PdfReader(pdf_bytes)
@@ -56,7 +56,6 @@ def extract_text_from_pdf(file, pages=5) -> str:
         for i in range(min(pages, len(pdf_reader.pages))):
             content += pdf_reader.pages[i].extract_text() + "\n"
 
-        st.write(f"✨ extracted {len(content)} chars")
         return content
 
     except Exception as e:
@@ -64,9 +63,7 @@ def extract_text_from_pdf(file, pages=5) -> str:
         return ""
 
 def process_files_for_content(uploaded_files):
-    """simplified archaeology: just grab text and yeet it at AI"""
-    st.write("🔍 extracting content...")
-
+    """extract content from uploaded files"""
     for file in uploaded_files:
         if file.name.lower().endswith('.pdf'):
             content = extract_text_from_pdf(file)
@@ -74,8 +71,6 @@ def process_files_for_content(uploaded_files):
             content = file.getvalue().decode('utf-8', errors='ignore')
 
         if content:
-            with st.expander(f"preview from {file.name}"):
-                st.code(content[:500] + "..." if len(content) > 500 else content)
             return {"content": content}
 
     return None

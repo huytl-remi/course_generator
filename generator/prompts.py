@@ -1,3 +1,46 @@
+LESSON_DETAIL_PROMPT = """flesh out this specific lesson with practical, engaging content.
+make it feel like a real teaching session, not just bullet points.
+
+RULES:
+1. narrative flow:
+   - hook them with relevance/importance
+   - explain core ideas clearly
+   - show real examples that actually help
+   - let them practice meaningfully
+   - wrap up with solid takeaways
+
+2. teaching style:
+   - match the course tone ({tone})
+   - keep it at {familiarity} level
+   - use language suitable for ages {age_range}
+   - focus on practical understanding
+   - encourage active learning
+
+Output Format:
+{
+    "objectives": [str],      # 2-3 clear goals
+    "concepts": [
+        {
+            "title": str,     # concept name
+            "explanation": str # clear breakdown
+        }
+    ],
+    "examples": [
+        {
+            "scenario": str,  # the example setup
+            "solution": str   # how it works
+        }
+    ],
+    "practice": [
+        {
+            "task": str,     # what to do
+            "hints": [str]   # helpful tips
+        }
+    ],
+    "takeaways": [str]      # 2-3 key points
+}
+"""
+
 TOC_EXTRACTION_PROMPT = """You are a Table of Contents extraction specialist.
 Your ONLY job is to find and extract the exact table of contents from this text.
 
@@ -42,27 +85,31 @@ Output Format:
 }
 """
 
-SECTION_GENERATION_PROMPT = """Generate a course outline based on the provided table of contents.
-Maintain the original structure while adapting it to our course format.
+SECTION_GENERATION_PROMPT = """Structure this course based on the provided table of contents.
+Extract the natural hierarchy while keeping it clean and logical.
 
 RULES:
-1. Follow the provided ToC structure closely
-2. Maintain original section ordering
-3. Keep original section titles where possible
-4. Add brief descriptions for each section
-5. Ensure content matches specified:
-   - Difficulty level
-   - Age range
-   - Time constraints
-   - Tone preferences
+1. Each major ToC heading becomes a section
+2. Sub-headings under each section become lessons
+3. Preserve the original hierarchy and ordering
+4. Add brief descriptions that actually help understand the scope
+5. Estimate realistic timings based on content depth
+6. Match the specified difficulty level and audience
 
 Output Format:
 {
     "sections": [
         {
-            "title": str,
-            "description": str,  # 2-3 sentences about this section
-            "estimated_time": int  # minutes
+            "title": str,          # major heading
+            "description": str,     # 2-3 helpful sentences about scope
+            "lessons": [
+                {
+                    "title": str,    # sub-heading
+                    "brief": str,    # 1-2 lines about this specific lesson
+                    "duration": int  # realistic minutes
+                }
+            ],
+            "estimated_time": int   # total minutes for section
         }
     ]
 }
@@ -89,17 +136,8 @@ Output Format:
     "lessons": [
         {
             "title": str,
-            "duration": int,  # in minutes
-            "lesson_content": {
-                "key_points": [
-                    {
-                        "concept": str,  # ALWAYS use "concept" as the key
-                        "explanation": str
-                    }
-                ],
-                "examples": [str],
-                "takeaways": [str]
-            }
+            "duration": int,  # estimated minutes
+            "brief": str      # 1-2 sentences about this lesson
         }
     ]
 }

@@ -1,3 +1,5 @@
+"""Main Streamlit application for course generation"""
+
 import streamlit as st
 from openai import OpenAI
 from generator.course import CourseGenerator
@@ -32,13 +34,46 @@ def show_course_info(info):
             st.write(f"- {outcome}")
 
 def show_sections(sections):
-    st.subheader("Course Structure")
+    st.subheader("course structure")
     total_time = sum(section["estimated_time"] for section in sections["sections"])
-    st.write(f"Total estimated time: {total_time} minutes ({total_time/60:.1f} hours)")
+    st.write(f"total estimated time: {total_time} minutes ({total_time/60:.1f} hours)")
 
-    for section in sections["sections"]:
-        with st.expander(f"📘 {section['title']} ({section['estimated_time']} mins)"):
-            st.write(section["description"])
+    for i, section in enumerate(sections["sections"], 1):
+        # section header with clean spacing
+        st.markdown(f"""
+        ## {i}. {section['title']}
+        *{section['description']}*
+
+        estimated time: {section['estimated_time']} minutes
+        """)
+
+        # lessons as clean cards
+        for j, lesson in enumerate(section["lessons"], 1):
+            st.markdown(f"""
+            ---
+            ### {i}.{j} {lesson['title']}
+            *{lesson['duration']} minutes*
+
+            {lesson['brief']}
+            """)
+
+            # cached lesson details
+            detail_key = f"lesson_detail_{section['title']}_{lesson['title']}"
+            if detail_key in st.session_state:
+                show_lesson_detail(st.session_state[detail_key])
+            else:
+                if st.button("🎓 generate full lesson", key=f"gen_{detail_key}"):
+                    with st.spinner("brewing some knowledge... 🧪"):
+                        detail = st.session_state.generator.generate_lesson_detail(
+                            st.session_state.user_input,
+                            st.session_state.course_info,
+                            section["title"],
+                            lesson
+                        )
+                        st.session_state[detail_key] = detail
+                        show_lesson_detail(detail)
+
+        st.markdown("---")
 
 def show_lessons(all_lessons):
     st.subheader("Detailed Course Content")
@@ -64,22 +99,56 @@ def show_lessons(all_lessons):
                     st.write(f"- {takeaway}")
 
 def show_section_lessons(section_lessons):
-    """show lessons for current section"""
-    st.write("#### Generated Lessons")
+    """show lesson outlines for current section"""
+    st.write("#### Lesson Outlines")
 
     for lesson in section_lessons["lessons"]:
         with st.expander(f"📝 {lesson['title']} ({lesson['duration']} mins)"):
-            st.write("**Key Points:**")
-            for point in lesson["lesson_content"]["key_points"]:
-                st.write(f"- **{point['concept']}:** {point['explanation']}")
+            st.write(lesson["brief"])
 
-            st.write("\n**Examples:**")
-            for example in lesson["lesson_content"]["examples"]:
-                st.write(f"- {example}")
+            # store details in session state if we have them
+            lesson_key = f"lesson_detail_{section_lessons['section_title']}_{lesson['title']}"
 
-            st.write("\n**Key Takeaways:**")
-            for takeaway in lesson["lesson_content"]["takeaways"]:
-                st.write(f"- {takeaway}")
+            if lesson_key in st.session_state:
+                detail = st.session_state[lesson_key]
+                show_lesson_detail(detail)
+            else:
+                if st.button("Generate Full Lesson", key=f"gen_{lesson_key}"):
+                    # generate details when requested
+                    detail = st.session_state.generator.generate_lesson_detail(
+                        st.session_state.user_input,
+                        st.session_state.course_info,
+                        section_lessons['section_title'],
+                        lesson
+                    )
+                    st.session_state[lesson_key] = detail
+                    show_lesson_detail(detail)
+
+def show_lesson_detail(detail):
+    """show full lesson details once generated"""
+    st.write("### Learning Objectives")
+    for obj in detail["objectives"]:
+        st.write(f"- {obj}")
+
+    st.write("### Core Concepts")
+    for concept in detail["concepts"]:
+        st.write(f"**{concept['title']}**")
+        st.write(concept["explanation"])
+
+    st.write("### Examples")
+    for example in detail["examples"]:
+        with st.expander(f"Example: {example['scenario'][:50]}..."):
+            st.write(example["solution"])
+
+    st.write("### Practice Activities")
+    for practice in detail["practice"]:
+        with st.expander(f"Activity: {practice['task'][:50]}..."):
+            for i, hint in enumerate(practice["hints"], 1):
+                st.write(f"Hint {i}: {hint}")
+
+    st.write("### Key Takeaways")
+    for takeaway in detail["takeaways"]:
+        st.write(f"- {takeaway}")
 
 # --- MAIN APP --- #
 st.title("📚 Course Generator")
@@ -117,11 +186,36 @@ else:
     client = OpenAI(api_key=st.session_state['OPENAI_API_KEY'])
 
     if st.session_state.generation_stage == 'input':
-        with st.form("course_input"):
-            category = st.text_input(
-                "Category",
-                help="Enter the course category"
+        # predefined categories OUTSIDE the form
+        categories = [
+            "Mathematics", "Physics", "Chemistry", "Biology",
+            "Computer Science", "Engineering", "Data Science",
+            "Visual Arts", "Music", "Literature", "Creative Writing",
+            "Photography", "Film & Media", "Design",
+            "English", "Spanish", "Mandarin", "Japanese",
+            "French", "German", "Arabic",
+            "Business", "Marketing", "Finance", "Project Management",
+            "Leadership", "Communication", "Entrepreneurship",
+            "Philosophy", "Psychology", "History", "Political Science",
+            "Environmental Studies", "Health & Wellness",
+            "Personal Development", "Other"
+        ]
+
+        category = st.selectbox(
+            "Category",
+            options=categories,
+            help="Select the course category"
+        )
+
+        # show "Other" field if they pick that option
+        if category == "Other":
+            custom_category = st.text_input(
+                "Custom Category",
+                help="Enter your custom course category"
             )
+
+        # now start the form
+        with st.form("course_input"):
 
             tone = st.selectbox(
                 "Tone",
@@ -181,15 +275,25 @@ else:
             submitted = st.form_submit_button("Start Generation")
 
         if submitted:
+            # validate ALL inputs including those outside form
+            missing = []
+            if not language:
+                missing.append("language")
+            if not needs_interests:
+                missing.append("needs/interests")
             if not (main_content or uploaded_files):
-                st.error("Please either provide main content or upload reference materials")
-            elif not all([language, needs_interests]):
-                st.error("Please fill in all required fields (language and needs/interests)")
+                missing.append("content or reference materials")
+            if category == "Other" and not custom_category:
+                missing.append("custom category")
+
+            if missing:
+                st.error(f"Please fill in: {', '.join(missing)}")
             else:
-                # store inputs in session state
+                # store ALL inputs in session state
+                final_category = custom_category if category == "Other" else category
                 st.session_state.user_input = {
                     "language": language,
-                    "category": category,
+                    "category": final_category,
                     "tone": tone,
                     "audience": {
                         "age_range": {"start": start_age, "end": end_age},
