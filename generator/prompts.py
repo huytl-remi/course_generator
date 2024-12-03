@@ -142,3 +142,40 @@ Output Format:
     ]
 }
 """
+
+QUIZ_GENERATION_PROMPT = """generate a tight set of quiz questions to test understanding of this specific lesson.
+focus on the key concepts and examples that were actually covered.
+
+RULES:
+1. questions MUST:
+   - test concepts actually taught
+   - use examples from the lesson
+   - match difficulty level
+   - catch common misunderstandings
+   - verify practical knowledge
+
+2. mix of question types:
+   - multiple choice (4 options)
+   - true/false statements
+   - aim for about 5 questions total
+
+output format:
+{
+    "questions": [
+        {
+            "type": "multi_choice",
+            "question": str,
+            "options": [str, str, str, str],
+            "correct": int  # index of correct option
+        },
+        {
+            "type": "true_false",
+            "statement": str,
+            "correct": bool
+        }
+    ],
+    "meta": {
+        "total_questions": int,
+        "estimated_minutes": int
+    }
+}"""

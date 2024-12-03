@@ -59,16 +59,26 @@ def show_sections(sections):
 
             # cached lesson details
             detail_key = f"lesson_detail_{section['title']}_{lesson['title']}"
-            if detail_key in st.session_state:
-                show_lesson_detail(st.session_state[detail_key])
-            else:
-                if st.button("🎓 generate full lesson", key=f"gen_{detail_key}"):
-                    with st.spinner("brewing some knowledge... 🧪"):
+            instruction_key = f"instruction_{detail_key}"
+
+            if detail_key not in st.session_state:
+                # custom instruction text area
+                custom_instruction = st.text_area(
+                    "your special instructions (optional):",
+                    help="got specific ideas? tell me what to focus on",
+                    key=instruction_key,
+                    placeholder="e.g. 'focus on real-world applications' or 'include more code examples'"
+                )
+
+                # single generate button that uses instructions if present
+                if st.button("🚀 generate lesson", key=f"gen_{detail_key}"):
+                    with st.spinner("brewing knowledge... 🧪"):
                         detail = st.session_state.generator.generate_lesson_detail(
                             st.session_state.user_input,
                             st.session_state.course_info,
                             section["title"],
-                            lesson
+                            lesson,
+                            custom_instruction if custom_instruction.strip() else None
                         )
                         st.session_state[detail_key] = detail
                         show_lesson_detail(detail)
@@ -123,6 +133,82 @@ def show_section_lessons(section_lessons):
                     )
                     st.session_state[lesson_key] = detail
                     show_lesson_detail(detail)
+
+def show_quiz(quiz, answers_key):
+    """display quiz with state management"""
+    if answers_key not in st.session_state:
+        # init answer state
+        st.session_state[answers_key] = {
+            f"q{i}": None for i in range(len(quiz["questions"]))
+        }
+
+    answers = st.session_state[answers_key]
+    all_correct = True
+
+    # progress header
+    total = len(quiz["questions"])
+    answered = sum(1 for v in answers.values() if v is not None)
+    correct = sum(1 for v in answers.values() if v is True)
+
+    st.write(f"### quiz progress: {correct}/{total} correct")
+    st.progress(correct/total)
+
+    # show each question
+    for i, q in enumerate(quiz["questions"]):
+        # question state indicator
+        state = "🤔" if answers[f"q{i}"] is None else (
+                "✅" if answers[f"q{i}"] else "❌")
+
+        st.write(f"\n#### Question {i+1} {state}")
+
+        if q["type"] == "multi_choice":
+            choice = st.radio(
+                q["question"],
+                q["options"],
+                key=f"radio_{answers_key}_{i}"
+            )
+
+            # check answer button
+            col1, col2 = st.columns([1, 4])
+            with col1:
+                if st.button("check", key=f"check_{answers_key}_{i}"):
+                    is_correct = q["options"].index(choice) == q["correct"]
+                    answers[f"q{i}"] = is_correct
+                    if is_correct:
+                        st.success("nice one! 🎉")
+                    else:
+                        st.error("not quite - try again!")
+                        all_correct = False
+
+        else:  # true/false
+            answer = st.radio(
+                q["statement"],
+                ["True", "False"],
+                key=f"radio_{answers_key}_{i}"
+            )
+
+            # check answer button
+            col1, col2 = st.columns([1, 4])
+            with col1:
+                if st.button("check", key=f"check_{answers_key}_{i}"):
+                    is_correct = (answer == "True") == q["correct"]
+                    answers[f"q{i}"] = is_correct
+                    if is_correct:
+                        st.success("spot on! 🎯")
+                    else:
+                        st.error("nope - give it another shot!")
+                        all_correct = False
+
+    # quiz completion
+    if all(v is not None for v in answers.values()):
+        if all_correct:
+            st.balloons()
+            st.success("you've mastered this lesson! 🎓")
+        else:
+            st.info("almost there! fix those red questions and try again 💪")
+            if st.button("reset quiz"):
+                for k in answers:
+                    answers[k] = None
 
 def show_lesson_detail(detail):
     """show full lesson details once generated"""

@@ -115,7 +115,7 @@ class CourseGenerator:
         st.write("✅ sections structured!")
         return sections
 
-    def generate_lesson_detail(self, user_input, course_info, section_title, lesson):
+    def generate_lesson_detail(self, user_input, course_info, section_title, lesson, custom_instruction=None):
         """generate detailed content for a specific lesson"""
         context = {
             **user_input,
@@ -123,6 +123,10 @@ class CourseGenerator:
             "section_title": section_title,
             "lesson": lesson
         }
+
+        # if we got custom instructions, add them to context
+        if custom_instruction:
+            context["custom_instruction"] = custom_instruction
 
         details = self._generate_step(
             LESSON_DETAIL_PROMPT,
@@ -154,6 +158,55 @@ class CourseGenerator:
             "section_description": section["description"],
             "lessons": lessons["lessons"]
         }
+
+    def generate_quiz(self, lesson, lesson_detail):
+        """generate quiz from lesson content with proper context"""
+        context = {
+            # lesson identification
+            "lesson_title": lesson["title"],
+            "lesson_brief": lesson["brief"],
+
+            # learning context
+            "difficulty_level": self.user_input["audience"]["familiarity"],
+            "target_audience": {
+                "age": self.user_input["audience"]["age_range"],
+                "level": self.user_input["audience"]["familiarity"]
+            },
+
+            # actual content taught
+            "key_concepts": lesson_detail["explanation"],
+            "examples_covered": lesson_detail["examples"],
+            "practice_done": lesson_detail["practice"],
+            "takeaways": lesson_detail["takeaways"],
+
+            # meta info
+            "duration": lesson["duration"]
+        }
+
+        # build focused quiz prompt
+        quiz_context = f"""LESSON CONTEXT:
+- title: {context['lesson_title']}
+- brief: {context['lesson_brief']}
+- difficulty: {context['difficulty_level']}
+- target age: {context['target_audience']['age']['start']}-{context['target_audience']['age']['end']}
+
+CONTENT COVERED:
+{context['key_concepts'][:500]}... (truncated)
+
+EXAMPLES USED:
+{json.dumps([ex['scenario'] for ex in context['examples_covered']], indent=2)}
+
+PRACTICE ACTIVITIES:
+{json.dumps([p['task'] for p in context['practice_done']], indent=2)}
+
+KEY TAKEAWAYS:
+{json.dumps(context['takeaways'], indent=2)}
+"""
+
+        return self._generate_step(
+            f"{quiz_context}\n\n{QUIZ_GENERATION_PROMPT}",
+            context
+        )
 
     def _generate_step(self, prompt, context):
         """run a single generation step"""
