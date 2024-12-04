@@ -292,8 +292,8 @@ KEY TAKEAWAYS:
         try:
             # get potential json block
             json_str = extract_json_block(content)
-            st.write("found potential json block:")
-            st.code(json_str[:200] + "..." if len(json_str) > 200 else json_str)
+            # st.write("found potential json block:")
+            # st.code(json_str[:200] + "..." if len(json_str) > 200 else json_str)
 
             # clean it up
             cleaned = clean_json_string(json_str)
