@@ -160,48 +160,18 @@ class CourseGenerator:
         }
 
     def generate_quiz(self, lesson, lesson_detail):
-        """generate quiz from lesson content with proper context"""
+        """generate quiz from core lesson content"""
         context = {
-            # lesson identification
-            "lesson_title": lesson["title"],
-            "lesson_brief": lesson["brief"],
-
-            # learning context
-            "difficulty_level": self.user_input["audience"]["familiarity"],
-            "target_audience": {
-                "age": self.user_input["audience"]["age_range"],
-                "level": self.user_input["audience"]["familiarity"]
-            },
-
-            # actual content taught
-            "key_concepts": lesson_detail["explanation"],
-            "examples_covered": lesson_detail["examples"],
-            "practice_done": lesson_detail["practice"],
-            "takeaways": lesson_detail["takeaways"],
-
-            # meta info
-            "duration": lesson["duration"]
+            # just the essentials
+            "lesson_title": lesson.get("title", "Untitled"),
+            "concepts": lesson_detail.get("concepts", []),
+            "takeaways": lesson_detail.get("takeaways", [])
         }
 
-        # build focused quiz prompt
-        quiz_context = f"""LESSON CONTEXT:
-- title: {context['lesson_title']}
-- brief: {context['lesson_brief']}
-- difficulty: {context['difficulty_level']}
-- target age: {context['target_audience']['age']['start']}-{context['target_audience']['age']['end']}
-
-CONTENT COVERED:
-{context['key_concepts'][:500]}... (truncated)
-
-EXAMPLES USED:
-{json.dumps([ex['scenario'] for ex in context['examples_covered']], indent=2)}
-
-PRACTICE ACTIVITIES:
-{json.dumps([p['task'] for p in context['practice_done']], indent=2)}
-
-KEY TAKEAWAYS:
-{json.dumps(context['takeaways'], indent=2)}
-"""
+        return self._generate_step(
+            QUIZ_GENERATION_PROMPT,
+            context
+        )
 
         return self._generate_step(
             f"{quiz_context}\n\n{QUIZ_GENERATION_PROMPT}",

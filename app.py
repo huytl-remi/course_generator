@@ -39,7 +39,6 @@ def show_sections(sections):
     st.write(f"total estimated time: {total_time} minutes ({total_time/60:.1f} hours)")
 
     for i, section in enumerate(sections["sections"], 1):
-        # section header with clean spacing
         st.markdown(f"""
         ## {i}. {section['title']}
         *{section['description']}*
@@ -47,8 +46,10 @@ def show_sections(sections):
         estimated time: {section['estimated_time']} minutes
         """)
 
-        # lessons as clean cards
         for j, lesson in enumerate(section["lessons"], 1):
+            detail_key = f"lesson_detail_{section['title']}_{lesson['title']}"
+            generation_key = f"generating_{detail_key}"  # track generation state
+
             st.markdown(f"""
             ---
             ### {i}.{j} {lesson['title']}
@@ -57,31 +58,41 @@ def show_sections(sections):
             {lesson['brief']}
             """)
 
-            # cached lesson details
-            detail_key = f"lesson_detail_{section['title']}_{lesson['title']}"
-            instruction_key = f"instruction_{detail_key}"
-
-            if detail_key not in st.session_state:
-                # custom instruction text area
-                custom_instruction = st.text_area(
-                    "your special instructions (optional):",
-                    help="got specific ideas? tell me what to focus on",
-                    key=instruction_key,
-                    placeholder="e.g. 'focus on real-world applications' or 'include more code examples'"
-                )
-
-                # single generate button that uses instructions if present
-                if st.button("🚀 generate lesson", key=f"gen_{detail_key}"):
-                    with st.spinner("brewing knowledge... 🧪"):
+            # if we're actively generating, show a spinner
+            if generation_key in st.session_state:
+                with st.spinner("brewing knowledge... 🧪"):
+                    # do the generation
+                    if detail_key not in st.session_state:  # prevent double-gen
                         detail = st.session_state.generator.generate_lesson_detail(
                             st.session_state.user_input,
                             st.session_state.course_info,
                             section["title"],
                             lesson,
-                            custom_instruction if custom_instruction.strip() else None
+                            st.session_state.get(f"instruction_{detail_key}")
                         )
                         st.session_state[detail_key] = detail
-                        show_lesson_detail(detail)
+                    # clean up generation state
+                    del st.session_state[generation_key]
+                    st.rerun()
+
+            # if we have content, show it
+            elif detail_key in st.session_state:
+                show_lesson_detail(st.session_state[detail_key])
+
+            # otherwise show generation controls
+            else:
+                instruction_key = f"instruction_{detail_key}"
+                custom_instruction = st.text_area(
+                    "your special instructions (optional):",
+                    help="got specific ideas? tell me what to focus on",
+                    key=instruction_key,
+                    placeholder="e.g. 'focus on real-world applications'"
+                )
+
+                if st.button("🚀 generate lesson", key=f"gen_{detail_key}"):
+                    # set generation state and trigger rerun
+                    st.session_state[generation_key] = True
+                    st.rerun()
 
         st.markdown("---")
 
@@ -211,7 +222,7 @@ def show_quiz(quiz, answers_key):
                     answers[k] = None
 
 def show_lesson_detail(detail):
-    """show full lesson details once generated"""
+    """show the juicy lesson content"""
     st.write("### Learning Objectives")
     for obj in detail["objectives"]:
         st.write(f"- {obj}")
@@ -221,24 +232,32 @@ def show_lesson_detail(detail):
         st.write(f"**{concept['title']}**")
         st.write(concept["explanation"])
 
-    st.write("### Examples")
-    for example in detail["examples"]:
-        with st.expander(f"Example: {example['scenario'][:50]}..."):
-            st.write(example["solution"])
-
-    st.write("### Practice Activities")
-    for practice in detail["practice"]:
-        with st.expander(f"Activity: {practice['task'][:50]}..."):
-            for i, hint in enumerate(practice["hints"], 1):
-                st.write(f"Hint {i}: {hint}")
-
     st.write("### Key Takeaways")
     for takeaway in detail["takeaways"]:
         st.write(f"- {takeaway}")
 
-# --- MAIN APP --- #
-st.title("📚 Course Generator")
-st.write("Create structured courses with AI assistance")
+    # quiz section - now with more defensive programming 🛡️
+    lesson_id = detail.get('lesson_title', str(hash(str(detail))))  # fallback to hash if no title
+    quiz_key = f"quiz_{lesson_id}"
+
+    with st.expander("🧠 knowledge check", expanded=False):
+        if quiz_key in st.session_state:
+            show_quiz(st.session_state[quiz_key], f"answers_{quiz_key}")
+        else:
+            if st.button("🎯 cook up a quiz", key=f"gen_quiz_{quiz_key}"):
+                with st.spinner("brewing brain teasers... 🧩"):
+                    # build a minimal lesson context that won't explode
+                    lesson_context = {
+                        "title": detail.get('lesson_title', 'current lesson'),
+                        # we don't actually need the brief for quiz gen
+                    }
+
+                    quiz = st.session_state.generator.generate_quiz(
+                        lesson_context,
+                        detail
+                    )
+                    st.session_state[quiz_key] = quiz
+                    st.rerun()
 
 # Sidebar for configuration
 with st.sidebar:
@@ -274,7 +293,7 @@ else:
     if st.session_state.generation_stage == 'input':
         # predefined categories OUTSIDE the form
         categories = [
-            "Mathematics", "Physics", "Chemistry", "Biology",
+            "Default", "Mathematics", "Physics", "Chemistry", "Biology",
             "Computer Science", "Engineering", "Data Science",
             "Visual Arts", "Music", "Literature", "Creative Writing",
             "Photography", "Film & Media", "Design",
@@ -305,7 +324,7 @@ else:
 
             tone = st.selectbox(
                 "Tone",
-                options=["Friendly", "Professional", "Informative", "Engaging",
+                options=["Professional", "Friendly", "Informative", "Engaging",
                         "Casual", "Humorous", "Storytelling", "Analytical", "Inspiring"],
                 help="Select the teaching style and tone"
             )
@@ -342,10 +361,10 @@ else:
                     value=45
                 )
 
-            needs_interests = st.text_area(
-                "Needs and Interests",
-                help="Describe the specific needs and interests of your target audience"
-            )
+            # needs_interests = st.text_area(
+            #     "Needs and Interests",
+            #     help="Describe the specific needs and interests of your target audience"
+            # )
 
             main_content = st.text_area(
                 "Main Content",
@@ -365,8 +384,6 @@ else:
             missing = []
             if not language:
                 missing.append("language")
-            if not needs_interests:
-                missing.append("needs/interests")
             if not (main_content or uploaded_files):
                 missing.append("content or reference materials")
             if category == "Other" and not custom_category:
@@ -390,7 +407,7 @@ else:
                         "lesson_length": lesson_length
                     },
                     "content": {
-                        "needs_interests": needs_interests,
+                        # "needs_interests": needs_interests,
                         "main_content": main_content
                     }
                 }

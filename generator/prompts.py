@@ -1,43 +1,31 @@
-LESSON_DETAIL_PROMPT = """flesh out this specific lesson with practical, engaging content.
-make it feel like a real teaching session, not just bullet points.
+LESSON_DETAIL_PROMPT = """yo, time to make someone actually understand this topic.
+don't just list facts - make them GET it.
 
 RULES:
-1. narrative flow:
-   - hook them with relevance/importance
-   - explain core ideas clearly
-   - show real examples that actually help
-   - let them practice meaningfully
-   - wrap up with solid takeaways
+1. your mission:
+   - start with why tf this matters
+   - break down the core concepts like you're explaining them to your brilliant friend
+   - no fluff, no filler, just pure understanding
+   - wrap it up with those "aha!" moments
 
-2. teaching style:
-   - match the course tone ({tone})
-   - keep it at {familiarity} level
-   - use language suitable for ages {age_range}
-   - focus on practical understanding
-   - encourage active learning
+2. vibe check:
+   - keep the tone {tone}
+   - match their level ({familiarity})
+   - speak their language (ages {age_range})
+   - focus on the "oh NOW i get it" moments
+   - make the complexity feel natural, not forced
+   - make the content as detailed as possible
 
 Output Format:
 {
-    "objectives": [str],      # 2-3 clear goals
+    "objectives": [str],      # what they'll actually know after this
     "concepts": [
         {
-            "title": str,     # concept name
-            "explanation": str # clear breakdown
+            "title": str,     # the big idea
+            "explanation": str # the "aha!" moment
         }
     ],
-    "examples": [
-        {
-            "scenario": str,  # the example setup
-            "solution": str   # how it works
-        }
-    ],
-    "practice": [
-        {
-            "task": str,     # what to do
-            "hints": [str]   # helpful tips
-        }
-    ],
-    "takeaways": [str]      # 2-3 key points
+    "takeaways": [str]       # the stuff that'll stick
 }
 """
 
