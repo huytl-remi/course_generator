@@ -489,10 +489,10 @@ else:
                         del st.session_state.sections
                         st.rerun()
 
-                with col2:
-                    if st.button("👍 Generate Detailed Lessons"):
-                        st.session_state.generation_stage = 'lessons'
-                        st.rerun()
+                # with col2:
+                #     if st.button("👍 Generate Detailed Lessons"):
+                #         st.session_state.generation_stage = 'lessons'
+                #         st.rerun()
 
             except Exception as e:
                 st.error(f"Error generating sections: {str(e)}")
