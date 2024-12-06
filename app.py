@@ -89,10 +89,18 @@ def show_sections(sections):
                     placeholder="e.g. 'focus on real-world applications'"
                 )
 
+                # Inside show_sections()
                 if st.button("🚀 generate lesson", key=f"gen_{detail_key}"):
-                    # set generation state and trigger rerun
-                    st.session_state[generation_key] = True
-                    st.rerun()
+                    with st.spinner("brewing knowledge... 🧪"):
+                        detail = st.session_state.generator.generate_lesson_detail(
+                            st.session_state.user_input,
+                            st.session_state.course_info,
+                            section["title"],
+                            lesson,
+                            st.session_state.get(f"instruction_{detail_key}")
+                        )
+                        st.session_state[detail_key] = detail
+                        st.rerun()
 
         st.markdown("---")
 
