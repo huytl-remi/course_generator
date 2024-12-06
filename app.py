@@ -48,7 +48,6 @@ def show_sections(sections):
 
         for j, lesson in enumerate(section["lessons"], 1):
             detail_key = f"lesson_detail_{section['title']}_{lesson['title']}"
-            generation_key = f"generating_{detail_key}"  # track generation state
 
             st.markdown(f"""
             ---
@@ -58,28 +57,8 @@ def show_sections(sections):
             {lesson['brief']}
             """)
 
-            # if we're actively generating, show a spinner
-            if generation_key in st.session_state:
-                with st.spinner("brewing knowledge... 🧪"):
-                    # do the generation
-                    if detail_key not in st.session_state:  # prevent double-gen
-                        detail = st.session_state.generator.generate_lesson_detail(
-                            st.session_state.user_input,
-                            st.session_state.course_info,
-                            section["title"],
-                            lesson,
-                            st.session_state.get(f"instruction_{detail_key}")
-                        )
-                        st.session_state[detail_key] = detail
-                    # clean up generation state
-                    del st.session_state[generation_key]
-                    st.rerun()
-
-            # if we have content, show it
-            elif detail_key in st.session_state:
+            if detail_key in st.session_state:
                 show_lesson_detail(st.session_state[detail_key])
-
-            # otherwise show generation controls
             else:
                 instruction_key = f"instruction_{detail_key}"
                 custom_instruction = st.text_area(
@@ -89,7 +68,6 @@ def show_sections(sections):
                     placeholder="e.g. 'focus on real-world applications'"
                 )
 
-                # Inside show_sections()
                 if st.button("🚀 generate lesson", key=f"gen_{detail_key}"):
                     with st.spinner("brewing knowledge... 🧪"):
                         detail = st.session_state.generator.generate_lesson_detail(
@@ -97,7 +75,7 @@ def show_sections(sections):
                             st.session_state.course_info,
                             section["title"],
                             lesson,
-                            st.session_state.get(f"instruction_{detail_key}")
+                            st.session_state.get(instruction_key)
                         )
                         st.session_state[detail_key] = detail
                         st.rerun()
@@ -298,6 +276,9 @@ if 'OPENAI_API_KEY' not in st.session_state:
 else:
     client = OpenAI(api_key=st.session_state['OPENAI_API_KEY'])
 
+    if 'course_info' in st.session_state:
+        show_course_info(st.session_state.course_info)
+
     if st.session_state.generation_stage == 'input':
         # predefined categories OUTSIDE the form
         categories = [
@@ -369,11 +350,6 @@ else:
                     value=45
                 )
 
-            # needs_interests = st.text_area(
-            #     "Needs and Interests",
-            #     help="Describe the specific needs and interests of your target audience"
-            # )
-
             main_content = st.text_area(
                 "Main Content",
                 help="Outline the primary topics and content to be covered (optional if reference materials provided)"
@@ -388,19 +364,16 @@ else:
             submitted = st.form_submit_button("Start Generation")
 
         if submitted:
-            # validate ALL inputs including those outside form
+            # validate required inputs
             missing = []
             if not language:
                 missing.append("language")
-            if not (main_content or uploaded_files):
-                missing.append("content or reference materials")
             if category == "Other" and not custom_category:
                 missing.append("custom category")
 
             if missing:
                 st.error(f"Please fill in: {', '.join(missing)}")
             else:
-                # store ALL inputs in session state
                 final_category = custom_category if category == "Other" else category
                 st.session_state.user_input = {
                     "language": language,
@@ -415,7 +388,6 @@ else:
                         "lesson_length": lesson_length
                     },
                     "content": {
-                        # "needs_interests": needs_interests,
                         "main_content": main_content
                     }
                 }
@@ -424,51 +396,49 @@ else:
                 st.rerun()
 
     elif st.session_state.generation_stage == 'toc':
-            st.write("🔍 analyzing content structure...")
+        st.write("🔍 analyzing content structure...")
 
-            try:
-                # initialize generator
-                generator = CourseGenerator(client)
+        try:
+            # initialize generator
+            generator = CourseGenerator(client)
 
-                # FIRST: process files if we have them
-                content_found = False
-                if st.session_state.uploaded_files:
-                    content_found = generator.process_files(st.session_state.uploaded_files)
+            # FIRST: process files if we have them
+            content_found = False
+            if st.session_state.uploaded_files:
+                content_found = generator.process_files(st.session_state.uploaded_files)
 
-                # SECOND: set up vector store if needed
-                vector_store_id = None
-                if st.session_state.uploaded_files:
-                    vector_store_id = process_uploaded_file(client, st.session_state.uploaded_files)
+            # SECOND: set up vector store if needed
+            vector_store_id = None
+            if st.session_state.uploaded_files:
+                vector_store_id = process_uploaded_file(client, st.session_state.uploaded_files)
 
-                # THIRD: initialize assistant with vector store
-                generator.init_assistant(vector_store_id)
+            # THIRD: initialize assistant with vector store
+            generator.init_assistant(vector_store_id)
 
-                # FINALLY: try to extract ToC if we found content
-                if content_found:
-                    raw_toc = generator.extract_toc()
-                    if raw_toc:
-                        st.session_state.raw_toc = raw_toc
+            # FINALLY: try to extract ToC if we found content
+            if content_found:
+                raw_toc = generator.extract_toc()
+                if raw_toc:
+                    st.session_state.raw_toc = raw_toc
 
-                # store generator and move on
-                st.session_state.generator = generator
-                st.session_state.generation_stage = 'course_info'
-                st.rerun()
+            # store generator and move on
+            st.session_state.generator = generator
+            st.session_state.generation_stage = 'course_info'
+            st.rerun()
 
-            except Exception as e:
-                st.error(f"error during content analysis: {str(e)}")
-                if 'vector_store_id' in locals():
-                    cleanup_vector_store(client, vector_store_id)
+        except Exception as e:
+            st.error(f"error during content analysis: {str(e)}")
+            if 'vector_store_id' in locals():
+                cleanup_vector_store(client, vector_store_id)
 
     elif st.session_state.generation_stage == 'course_info':
         st.write("🎨 generating course information...")
 
         try:
-            # we don't need to pass raw_toc anymore since it's stored in the generator
             course_info = st.session_state.generator.generate_course_info(
                 st.session_state.user_input
             )
 
-            show_course_info(course_info)
             st.session_state.course_info = course_info
 
             if st.button("✨ Generate Course Structure"):
@@ -479,31 +449,27 @@ else:
             st.error(f"Error generating course info: {str(e)}")
 
     elif st.session_state.generation_stage == 'sections':
-            st.write("📑 generating course structure...")
+        st.write("📑 generating course structure...")
 
-            try:
-                # we don't pass raw_toc anymore - the generator has it stored internally
+        try:
+            # Only generate sections if not already in session state
+            if 'sections' not in st.session_state:
                 sections = st.session_state.generator.generate_sections(
                     st.session_state.user_input,
                     st.session_state.course_info
                 )
-
-                show_sections(sections)
                 st.session_state.sections = sections
 
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("👎 Regenerate Structure"):
-                        del st.session_state.sections
-                        st.rerun()
+            show_sections(st.session_state.sections)
 
-                # with col2:
-                #     if st.button("👍 Generate Detailed Lessons"):
-                #         st.session_state.generation_stage = 'lessons'
-                #         st.rerun()
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("👎 Regenerate Structure"):
+                    del st.session_state.sections
+                    st.rerun()
 
-            except Exception as e:
-                st.error(f"Error generating sections: {str(e)}")
+        except Exception as e:
+            st.error(f"Error generating sections: {str(e)}")
 
     elif st.session_state.generation_stage == 'lessons':
             if 'current_section_index' not in st.session_state:

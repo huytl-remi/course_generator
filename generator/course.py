@@ -52,24 +52,25 @@ class CourseGenerator:
         # assistant setup complete
 
     def extract_toc(self):
-        """let AI find any structure in our content"""
-        if not self.raw_content:
-            st.error("no content to analyze!")
-            return None
-
+        """let AI find/generate structure"""
         if not self.thread_id:
             st.error("assistant not initialized!")
             return None
 
         response = self._generate_step(
             TOC_EXTRACTION_PROMPT,
-            {"content": self.raw_content}
+            {
+                "content": self.raw_content if self.raw_content else None,
+                "category": st.session_state.user_input["category"],
+                "familiarity": st.session_state.user_input["audience"]["familiarity"],
+                "course_duration": st.session_state.user_input["structure"]["course_duration"]
+            }
         )
 
         if isinstance(response, str):
-            found = response != "NO_STRUCTURE_FOUND"
+            found = response != "NO_TOC_FOUND"
             if found:
-                st.write("🎯 found structure!")
+                st.write("🎯 found/generated structure!")
                 st.code(response, language="text")
                 self.structure = response
                 return response
