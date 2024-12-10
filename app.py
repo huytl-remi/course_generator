@@ -430,8 +430,6 @@ else:
                 cleanup_vector_store(client, vector_store_id)
 
     elif st.session_state.generation_stage == 'course_info':
-        st.write("🎨 generating course information...")
-
         try:
             course_info = st.session_state.generator.generate_course_info(
                 st.session_state.user_input

@@ -89,7 +89,6 @@ class CourseGenerator:
 
     def generate_course_info(self, user_input):
         """generate course info - returns markdown content"""
-        st.write("🎨 crafting course info...")
 
         context = {**user_input}
         if self.structure:
@@ -324,22 +323,32 @@ class CourseGenerator:
         raise Exception("no valid content found")
 
     def _normalize_markdown(self, content: str) -> str:
-        """ensure consistent markdown formatting"""
-        lines = content.split('\n')
-        normalized = []
+        """ensure consistent markdown formatting regardless of input mess"""
+        def clean_line(line: str) -> str:
+            # strip any existing formatting first
+            line = line.strip()
 
-        for line in lines:
-            # strip any weird bold markers around headers first
-            line = re.sub(r'\*\*#', '#', line)
-            line = re.sub(r'#\*\*', '#', line)
+            # fix headers - handle multiple scenarios
+            if any(line.startswith(p) for p in ['#', '**#', '#**', '# **']):
+                # strip ALL formatting from header line
+                clean = re.sub(r'[*#]+\s*', '', line)
+                # check if it looks like a subheader
+                if any(kw in clean.lower() for kw in ['overview', 'what you need', 'structure', 'requirements']):
+                    return f"## {clean}"
+                return f"# {clean}"
 
-            # THEN fix header formatting
-            if line.startswith('#'):
-                line = re.sub(r'^(#+)([^ ])', r'\1 \2', line)
-
-            # finally handle remaining emphasis
+            # fix emphasis/bold - normalize to markdown style
             line = re.sub(r'\*\*(.*?)\*\*', r'**\1**', line)
+            line = re.sub(r'__(.+?)__', r'**\1**', line)
 
-            normalized.append(line)
+            # fix bullet points
+            if line.lstrip().startswith('-'):
+                return f"- {line.lstrip('-').strip()}"
+
+            return line
+
+        # process line by line
+        lines = content.split('\n')
+        normalized = [clean_line(line) for line in lines if line.strip()]
 
         return '\n'.join(normalized)

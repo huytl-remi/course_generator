@@ -13,6 +13,13 @@ if no source content:
 - use industry standards
 - keep it current and practical
 
+MARKDOWN RULES:
+- use clean # and ## for headers (no other styles)
+- regular paragraphs without any fancy formatting
+- use single * for italics, double ** for bold
+- clean bullet lists with single -
+- no mixing header styles or nesting bolds
+
 example:
 
 <content>
@@ -56,6 +63,13 @@ guidelines:
 - structure it however makes sense
 - use markdown formatting
 - if no content, use industry standards
+
+MARKDOWN RULES:
+- use clean # and ## for headers (no other styles)
+- regular paragraphs without any fancy formatting
+- use single * for italics, double ** for bold
+- clean bullet lists with single -
+- no mixing header styles or nesting bolds
 
 example:
 
