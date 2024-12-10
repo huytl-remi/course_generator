@@ -25,7 +25,7 @@ def show_course_info(info: str):
     st.markdown(info)
 
 def show_sections(sections):
-    st.subheader("course structure")
+    st.subheader("Course Structure")
     total_time = sum(section["estimated_time"] for section in sections["sections"])
     st.write(f"total estimated time: {total_time} minutes ({total_time/60:.1f} hours)")
 
