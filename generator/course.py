@@ -1,7 +1,6 @@
 """Core course generation logic using OpenAI's API"""
 
 import json
-from openai import OpenAI
 import time
 import re
 from .prompts import *
@@ -9,7 +8,7 @@ from utils.file_handler import ensure_vector_store_ready, cleanup_vector_store, 
 import streamlit as st
 
 class CourseGenerator:
-    def __init__(self, client: OpenAI, model="gpt-4o-mini"):
+    def __init__(self, client, model="gpt-4o-mini"):
         self.client = client
         self.model = model
         self.assistant_id = None
@@ -19,13 +18,23 @@ class CourseGenerator:
 
     def process_files(self, uploaded_files):
         """extract content from files"""
-        extracted = process_files_for_content(uploaded_files)
-        if extracted:
+        try:
+            extracted = process_files_for_content(uploaded_files)
+            if not extracted:
+                st.warning("no content found in files")
+                return False
+
+            if not extracted.get("content"):
+                st.warning("content extraction returned empty result")
+                return False
+
             self.raw_content = extracted["content"]
             return True
 
-        st.warning("no content found in files")
-        return False
+        except Exception as e:
+            st.error(f"failed to process files: {str(e)}")
+            # might wanna log the full traceback here
+            return False
 
     def init_assistant(self, vector_store_id=None):
         """set up our AI teaching assistant"""
@@ -49,7 +58,6 @@ class CourseGenerator:
 
         thread = self.client.beta.threads.create()
         self.thread_id = thread.id
-        # assistant setup complete
 
     def extract_toc(self):
         """let AI find/generate structure"""
@@ -57,6 +65,7 @@ class CourseGenerator:
             st.error("assistant not initialized!")
             return None
 
+        # try extraction first
         response = self._generate_step(
             TOC_EXTRACTION_PROMPT,
             {
@@ -64,24 +73,22 @@ class CourseGenerator:
                 "category": st.session_state.user_input["category"],
                 "familiarity": st.session_state.user_input["audience"]["familiarity"],
                 "course_duration": st.session_state.user_input["structure"]["course_duration"]
-            }
+            },
+            requires_json=False  # raw first
         )
 
-        if isinstance(response, str):
-            found = response != "NO_TOC_FOUND"
-            if found:
-                st.write("🎯 found/generated structure!")
-                st.code(response, language="text")
-                self.structure = response
-                return response
-            st.write("⚠️ no clear structure found")
-            return None
+        # if we got a valid response (either raw TOC or json)
+        if response:
+            st.write("🎯 found/generated structure!")
+            st.code(response if isinstance(response, str) else json.dumps(response, indent=2))
+            self.structure = response
+            return response
 
-        st.error("unexpected response format")
+        st.write("⚠️ no structure found")
         return None
 
     def generate_course_info(self, user_input):
-        """generate course info using any structure we found"""
+        """generate course info - returns markdown content"""
         st.write("🎨 crafting course info...")
 
         context = {**user_input}
@@ -90,19 +97,37 @@ class CourseGenerator:
         if self.raw_content:
             context["content_preview"] = self.raw_content
 
-        course_info = self._generate_step(
-            COURSE_INFO_PROMPT,
-            context
-        )
+        try:
+            content = self._generate_step(
+                COURSE_INFO_PROMPT,
+                context,
+                requires_json=False
+            )
 
-        st.write("✅ course info crafted!")
-        return course_info
+            # if we got raw markdown without tags, that's fine
+            if not content.strip().startswith('<content>'):
+                return content.strip()
+
+            # if we got tags, extract the content
+            content_match = re.search(r'<content>(.*?)</content>',
+                                    content,
+                                    re.DOTALL)
+            if content_match:
+                return content_match.group(1).strip()
+
+            # if neither worked, show what we got
+            st.warning("unexpected content format:")
+            st.code(content)
+            return content.strip()  # return it anyway
+
+        except Exception as e:
+            st.error(f"failed to generate course info: {str(e)}")
+            raise
 
     def generate_sections(self, user_input, course_info):
-        """generate course sections"""
-        st.write("📑 structuring course sections...")
-
-        context = {**user_input, **course_info}
+        """generate course sections - needs json for UI"""
+        # st.write("📑 structuring course sections...")
+        context = {**user_input}
         if self.structure:
             context["extracted_structure"] = self.structure
         if self.raw_content:
@@ -110,48 +135,53 @@ class CourseGenerator:
 
         sections = self._generate_step(
             SECTION_GENERATION_PROMPT,
-            context
+            context,
+            requires_json=True
         )
-
-        st.write("✅ sections structured!")
+        # st.write("✅ sections structured!")
         return sections
 
     def generate_lesson_detail(self, user_input, course_info, section_title, lesson, custom_instruction=None):
-        """generate detailed content for a specific lesson"""
+        """generate detailed lesson content - returns markdown"""
         context = {
             **user_input,
-            **course_info,
             "section_title": section_title,
-            "lesson": lesson
+            "lesson": lesson,
+            "word_count": user_input["structure"]["word_count"]  # NEW: pass through word count
         }
-
-        # if we got custom instructions, add them to context
         if custom_instruction:
             context["custom_instruction"] = custom_instruction
 
-        details = self._generate_step(
+        # WAIT - might wanna add word count validation
+        content = self._generate_step(
             LESSON_DETAIL_PROMPT,
-            context
+            context,
+            requires_json=False
         )
 
-        return details
+        # ngl might be nice to check actual word count
+        word_count = len(content.split())
+        target = context["word_count"]
+        if abs(word_count - target) > target * 0.2:  # 20% tolerance
+            st.warning(f"⚠️ heads up: lesson length ({word_count} words) is pretty different from target ({target})")
+
+        return content
 
     def generate_lessons_for_section(self, user_input, course_info, section):
-        """generate lesson outlines for ONE spicy section"""
+        """generate lesson outlines - needs json for UI"""
         context = {
             **user_input,
-            **course_info,
             "section": section,
             "current_section_time": section["estimated_time"],
             "total_lessons_needed": max(1, section["estimated_time"] // user_input["structure"]["lesson_length"])
         }
-
         if self.structure:
             context["extracted_structure"] = self.structure
 
         lessons = self._generate_step(
             LESSON_GENERATION_PROMPT,
-            context
+            context,
+            requires_json=True
         )
 
         return {
@@ -161,38 +191,28 @@ class CourseGenerator:
         }
 
     def generate_quiz(self, lesson, lesson_detail):
-        """generate quiz from core lesson content"""
+        """generate quiz - needs json for UI"""
         context = {
-            # just the essentials
             "lesson_title": lesson.get("title", "Untitled"),
-            "concepts": lesson_detail.get("concepts", []),
-            "takeaways": lesson_detail.get("takeaways", [])
+            "content": lesson_detail
         }
-
         return self._generate_step(
             QUIZ_GENERATION_PROMPT,
-            context
+            context,
+            requires_json=True
         )
 
-        return self._generate_step(
-            f"{quiz_context}\n\n{QUIZ_GENERATION_PROMPT}",
-            context
-        )
-
-    def _generate_step(self, prompt, context):
+    def _generate_step(self, prompt, context, requires_json=False):
         """run a single generation step"""
-        # create message
         message = self.client.beta.threads.messages.create(
             thread_id=self.thread_id,
             role="user",
             content=f"{prompt}\n\nContext: {json.dumps(context)}"
         )
 
-        # show minimal progress indicator
         progress_text = st.empty()
         progress_text.text("generating...")
 
-        # run assistant
         run = self.client.beta.threads.runs.create(
             thread_id=self.thread_id,
             assistant_id=self.assistant_id
@@ -201,24 +221,30 @@ class CourseGenerator:
         run = self.wait_for_run(run.id)
         progress_text.empty()
 
-        # get response
         messages = self.client.beta.threads.messages.list(thread_id=self.thread_id)
         for msg in messages.data:
             if msg.role == "assistant":
                 content = msg.content[0].text.value.strip()
 
-                # ToC extraction might return just a string
+                # TOC extraction is special - it can be raw text
                 if prompt == TOC_EXTRACTION_PROMPT:
-                    if content.startswith("{"):
-                        return self.extract_json_from_response(content)
-                    return content.strip()
+                    # if it looks like a TOC (has newlines and indentation)
+                    if '\n' in content and any(line.startswith(' ') for line in content.split('\n')):
+                        return content.strip()
+                    # if not, try json (for generated TOC)
+                    if requires_json:
+                        return self._extract_json_from_response(content)
 
-                return self.extract_json_from_response(content)
+                # normal json/content handling
+                if requires_json:
+                    return self._extract_json_from_response(content)
+                else:
+                    return self._extract_content_from_response(content)
 
-        raise Exception("no valid response from assistant - this is AWKWARD")
+        raise Exception("no valid response from assistant")
 
     def wait_for_run(self, run_id):
-        """patiently wait for our AI to cook up some content"""
+        """wait for AI response"""
         while True:
             run = self.client.beta.threads.runs.retrieve(
                 thread_id=self.thread_id,
@@ -230,29 +256,26 @@ class CourseGenerator:
                 raise Exception(f"run failed: {run.last_error}")
             time.sleep(1)
 
-    def extract_json_from_response(self, content):
-        """parse json from response with MAXIMUM PREJUDICE"""
-        st.write("🔍 attempting to parse response...")
+    def _extract_json_from_response(self, content):
+        """parse json from response (for UI-needed steps)"""
+        # st.write("🔍 parsing json response...")
 
-        # first try: clean up obvious issues
         def clean_json_string(s):
-            # fix common issues that break json
             fixes = [
-                (r'(?<!\\)"(\w+)": ', r'"\1": '),  # fix unquoted property names
-                (r',(\s*[}\]])', r'\1'),           # remove trailing commas
+                (r'(?<!\\)"(\w+)": ', r'"\1": '),  # fix unquoted props
+                (r',(\s*[}\]])', r'\1'),           # fix trailing commas
                 (r'\\([^"])', r'\\\\\1'),          # escape backslashes
-                (r'(?<!\\)\\(?!["\\])', r'\\\\'),  # escape remaining backslashes
+                (r'(?<!\\)\\(?!["\\])', r'\\\\')   # escape remaining
             ]
             for pattern, replacement in fixes:
                 s = re.sub(pattern, replacement, s)
             return s
 
         def extract_json_block(s):
-            # try to find json block
             patterns = [
-                r'```(?:json)?\n(.*?)\n```',  # markdown code block
-                r'{[\s\S]*}',                 # raw json object
-                r'\[[\s\S]*\]'                # raw json array
+                r'```(?:json)?\n(.*?)\n```',  # markdown block
+                r'{[\s\S]*}',                 # raw object
+                r'\[[\s\S]*\]'                # raw array
             ]
             for pattern in patterns:
                 match = re.search(pattern, s, re.DOTALL)
@@ -261,39 +284,58 @@ class CourseGenerator:
             return s
 
         try:
-            # get potential json block
             json_str = extract_json_block(content)
-            # st.write("found potential json block:")
-            # st.code(json_str[:200] + "..." if len(json_str) > 200 else json_str)
-
-            # clean it up
             cleaned = clean_json_string(json_str)
 
-            # try to parse
             try:
                 return json.loads(cleaned)
             except json.JSONDecodeError as e1:
                 st.write(f"💥 failed to parse cleaned json: {str(e1)}")
-                st.write("attempting to parse original...")
+                st.write("attempting original...")
                 return json.loads(json_str)
 
         except json.JSONDecodeError as e:
-            st.error("💥 json parsing failed!")
-            st.write("problematic content:")
-            st.code(content)
+            st.error(f"💥 json parsing failed: {str(e)}")
+            raise Exception(f"no valid json found: {str(e)}")
 
-            # show exact error location
-            error_msg = str(e)
-            if "line" in error_msg and "column" in error_msg:
-                line_no = int(re.search(r"line (\d+)", error_msg).group(1))
-                col_no = int(re.search(r"column (\d+)", error_msg).group(1))
+    def _extract_content_from_response(self, content):
+        """extract and clean content"""
+        # first clean any color formatting or special chars
+        content = re.sub(r'#[A-Fa-f0-9]{6}', '', content)  # remove color codes
 
-                lines = content.split("\n")
-                st.write("error location:")
-                for i in range(max(0, line_no-2), min(len(lines), line_no+1)):
-                    prefix = ">>> " if i == line_no-1 else "    "
-                    st.code(f"{prefix}{lines[i]}")
-                    if i == line_no-1:
-                        st.code(f"    {' '*(col_no-1)}^")
+        # then normalize markdown
+        content = self._normalize_markdown(content)
 
-            raise Exception(f"no valid JSON found: {str(e)}")
+        # THEN do our normal content extraction
+        if content.strip().startswith('#') or content.strip().startswith('-'):
+            return content.strip()
+
+        content_match = re.search(r'<content>(.*?)</content>',
+                                content,
+                                re.DOTALL)
+        if content_match:
+            return content_match.group(1).strip()
+
+        if '\n' in content and any(line.startswith(('#', '-', '*')) for line in content.split('\n')):
+            return content.strip()
+
+        st.error("💥 couldn't parse content format!")
+        st.code(content)
+        raise Exception("no valid content found")
+
+    def _normalize_markdown(self, content: str) -> str:
+        """ensure consistent markdown formatting"""
+        lines = content.split('\n')
+        normalized = []
+
+        for line in lines:
+            # fix header formatting
+            if line.startswith('#'):
+                line = re.sub(r'^(#+)([^ ])', r'\1 \2', line)
+
+            # fix emphasis markers - replace ** with proper markdown
+            line = re.sub(r'\*\*(.*?)\*\*', r'**\1**', line)
+
+            normalized.append(line)
+
+        return '\n'.join(normalized)

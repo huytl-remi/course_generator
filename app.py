@@ -1,5 +1,6 @@
 """Main Streamlit application for course generation"""
 
+import re
 import streamlit as st
 from openai import OpenAI
 from generator.course import CourseGenerator
@@ -19,19 +20,9 @@ if 'generation_stage' not in st.session_state:
     # stages: input -> toc -> course_info -> sections -> lessons -> complete
 
 # --- UI COMPONENTS --- #
-def show_course_info(info):
-    st.header(info["course_name"])
-    st.write(info["description"])
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("Prerequisites")
-        st.write(info["prerequisites"])
-
-    with col2:
-        st.subheader("Learning Outcomes")
-        for outcome in info["learning_outcomes"]:
-            st.write(f"- {outcome}")
+def show_course_info(info: str):
+    """Display course overview from markdown content"""
+    st.markdown(info)
 
 def show_sections(sections):
     st.subheader("course structure")
@@ -207,43 +198,40 @@ def show_quiz(quiz, answers_key):
                 for k in answers:
                     answers[k] = None
 
-def show_lesson_detail(detail):
-    """show the juicy lesson content"""
-    st.write("### Learning Objectives")
-    for obj in detail["objectives"]:
-        st.write(f"- {obj}")
+def show_lesson_detail(detail: str):
+    """Show the lesson content with word count and quiz"""
+    # NEW: add word count info before content
+    word_count = len(detail.split())
+    target = st.session_state.user_input["structure"]["word_count"]
+    st.text(f"Words: {word_count} / {target} target")
 
-    st.write("### Core Concepts")
-    for concept in detail["concepts"]:
-        st.write(f"**{concept['title']}**")
-        st.write(concept["explanation"])
+    # existing content display
+    st.markdown(detail)
 
-    st.write("### Key Takeaways")
-    for takeaway in detail["takeaways"]:
-        st.write(f"- {takeaway}")
-
-    # quiz section - now with more defensive programming 🛡️
-    lesson_id = detail.get('lesson_title', str(hash(str(detail))))  # fallback to hash if no title
+    # existing quiz section
+    lesson_id = str(hash(detail))
     quiz_key = f"quiz_{lesson_id}"
-
     with st.expander("🧠 knowledge check", expanded=False):
         if quiz_key in st.session_state:
             show_quiz(st.session_state[quiz_key], f"answers_{quiz_key}")
         else:
             if st.button("🎯 cook up a quiz", key=f"gen_quiz_{quiz_key}"):
                 with st.spinner("brewing brain teasers... 🧩"):
-                    # build a minimal lesson context that won't explode
                     lesson_context = {
-                        "title": detail.get('lesson_title', 'current lesson'),
-                        # we don't actually need the brief for quiz gen
+                        "title": _extract_title(detail),
                     }
-
                     quiz = st.session_state.generator.generate_quiz(
                         lesson_context,
                         detail
                     )
                     st.session_state[quiz_key] = quiz
                     st.rerun()
+
+def _extract_title(markdown: str) -> str:
+    """Helper to get first h1 from markdown"""
+    if match := re.search(r'^#\s+(.+)$', markdown, re.MULTILINE):
+        return match.group(1)
+    return 'current lesson'  # fallback
 
 # Sidebar for configuration
 with st.sidebar:
@@ -349,6 +337,15 @@ else:
                     max_value=120,
                     value=45
                 )
+            col6, _ = st.columns([1, 1])  # using columns for layout consistency
+            with col6:
+                word_count = st.number_input(
+                    "Words per Lesson",
+                    min_value=100,
+                    max_value=5000,
+                    value=500,
+                    help="Target word count for each lesson's content"
+                )
 
             main_content = st.text_area(
                 "Main Content",
@@ -385,7 +382,8 @@ else:
                     },
                     "structure": {
                         "course_duration": course_duration,
-                        "lesson_length": lesson_length
+                        "lesson_length": lesson_length,
+                        "word_count": word_count
                     },
                     "content": {
                         "main_content": main_content
@@ -438,8 +436,7 @@ else:
             course_info = st.session_state.generator.generate_course_info(
                 st.session_state.user_input
             )
-
-            st.session_state.course_info = course_info
+            st.session_state.course_info = course_info  # now stores markdown string
 
             if st.button("✨ Generate Course Structure"):
                 st.session_state.generation_stage = 'sections'
@@ -449,7 +446,7 @@ else:
             st.error(f"Error generating course info: {str(e)}")
 
     elif st.session_state.generation_stage == 'sections':
-        st.write("📑 generating course structure...")
+        # st.write("📑 generating course structure...")
 
         try:
             # Only generate sections if not already in session state

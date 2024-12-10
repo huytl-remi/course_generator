@@ -1,37 +1,33 @@
-LESSON_DETAIL_PROMPT = """yo, time to make someone actually understand this topic.
-don't just list facts - make them GET it.
+LESSON_DETAIL_PROMPT = """yo, time to make this topic actually click for someone.
 
-RULES:
-1. your mission:
-  - start with why tf this matters
-  - break down the core concepts like you're explaining them to your brilliant friend
-  - no fluff, no filler, just pure understanding
-  - wrap it up with those "aha!" moments
+guidelines:
+- match their level ({familiarity})
+- keep the tone {tone}
+- aim for their age range ({age_range})
+- structure it however makes sense
+- go as deep as needed
+- use markdown formatting
+- make it actually useful
 
-2. vibe check:
-  - keep the tone {tone}
-  - match their level ({familiarity})
-  - speak their language (ages {age_range})
-  - focus on the "oh NOW i get it" moments
-  - make the complexity feel natural, not forced
-  - make the content as detailed as possible
+if no source content:
+- use industry standards
+- keep it current and practical
 
-3. if no source content:
-  - draw from industry/academic standards
-  - focus on real-world applicability
-  - include up-to-date examples and best practices
+example:
 
-Output Format:
-{
-   "objectives": [str],      # what they'll actually know after this
-   "concepts": [
-       {
-           "title": str,     # the big idea
-           "explanation": str # the "aha!" moment
-       }
-   ],
-   "takeaways": [str]       # the stuff that'll stick
-}
+<content>
+# Main Topic
+
+Regular text with **bold** and *italic* when needed.
+
+## Maybe Some Sections
+
+- markdown formatting
+- structure it your way
+- just make it clear
+
+Use whatever markdown elements help explain things best.
+</content>
 """
 
 TOC_EXTRACTION_PROMPT = """You are a Table of Contents specialist. Either:
@@ -52,29 +48,30 @@ Rules for generated ToC:
 - Match target audience level
 """
 
-COURSE_INFO_PROMPT = """Create course info based on {content_preview if exists OR "your expertise in {category}"}.
+COURSE_INFO_PROMPT = """create a course overview that'll tell people what they're really getting into.
 
-RULES:
-1. Course Name:
-  - Max 10 words
-  - Clear and engaging
-  - Reflects content/domain accurately
-  - Use specified {language}
+guidelines:
+- be real about requirements
+- match tone/complexity to audience
+- structure it however makes sense
+- use markdown formatting
+- if no content, use industry standards
 
-2. Course Info Requirements:
-  - Description: 50-100 words in {language}
-  - Prerequisites: List assumed knowledge
-  - Learning Outcomes: Concrete achievements
-  - Match tone/complexity to audience
-  - For no content: Focus on industry standards
+example:
 
-Output Format:
-{
-   "course_name": str,
-   "description": str,
-   "prerequisites": str,
-   "learning_outcomes": [str]
-}
+<content>
+# Course Title
+
+Overview that actually explains what's up.
+
+## What You Need
+
+- markdown formatting
+- structure it your way
+- just make it useful
+
+Make it clear what they're signing up for.
+</content>
 """
 
 SECTION_GENERATION_PROMPT = """Structure course based on ToC (provided or generated).
