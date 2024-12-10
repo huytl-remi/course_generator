@@ -329,11 +329,15 @@ class CourseGenerator:
         normalized = []
 
         for line in lines:
-            # fix header formatting
+            # strip any weird bold markers around headers first
+            line = re.sub(r'\*\*#', '#', line)
+            line = re.sub(r'#\*\*', '#', line)
+
+            # THEN fix header formatting
             if line.startswith('#'):
                 line = re.sub(r'^(#+)([^ ])', r'\1 \2', line)
 
-            # fix emphasis markers - replace ** with proper markdown
+            # finally handle remaining emphasis
             line = re.sub(r'\*\*(.*?)\*\*', r'**\1**', line)
 
             normalized.append(line)
