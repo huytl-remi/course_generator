@@ -37,22 +37,25 @@ Use whatever markdown elements help explain things best.
 </content>
 """
 
-TOC_EXTRACTION_PROMPT = """You are a Table of Contents specialist. Either:
-1. If content provided: Extract EXACT ToC, preserving all formatting/numbering
-2. If no content: Generate comprehensive ToC for {category} at {familiarity} level within {course_duration} hours
+TOC_EXTRACTION_PROMPT = """You are a Table of Contents (ToC) specialist. Your task depends on the input:
+	1.	If provided with content that contains a ToC:
+	•	Extract the most comprehensive ToC exactly once.
+	•	Simplify formatting while preserving structure:
+	•	Retain all numbering (e.g., 1, 1.1, 1.1.1) and section titles.
+	•	Include corresponding page numbers, if present.
+	•	Remove unnecessary characters such as excessive dots, decorative lines, or long sequences of whitespace.
+	•	Present each entry in a clean, readable line, keeping logical order and hierarchy.
+	•	If no recognizable ToC is found, return “NO_TOC_FOUND”.
+	2.	If no content is provided:
+	•	Generate a comprehensive ToC for {category}, suitable for a {familiarity} audience, covering {course_duration} hours.
+	•	Structure the content from fundamentals to advanced concepts, balancing practical and theoretical topics.
+	•	Follow professional standards for curriculum design, ensuring clarity and consistency.
 
-Rules for content-based extraction:
-- Return ONLY raw ToC exactly as appears
-- Include all numbering/indentation
-- Choose most comprehensive if multiple ToCs
-- Return "NO_TOC_FOUND" if none exists
-
-Rules for generated ToC:
-- Follow industry curriculum standards
-- Include practical and theoretical topics
-- Structure from fundamentals to advanced
-- Balance depth vs time constraints
-- Match target audience level
+General Guidelines:
+	•	Maintain accuracy and clarity.
+	•	Keep formatting simple and concise, minimizing token usage.
+	•	Do not add extra decorations or filler characters.
+	•	Ensure the final output is user-friendly and logically organized.
 """
 
 COURSE_INFO_PROMPT = """create a course overview that'll tell people what they're really getting into.
@@ -179,7 +182,8 @@ output format:
        {
            "type": "true_false",
            "statement": str,
-           "correct": bool
+           "correct": bool,
+           "explanation": str
        }
    ],
    "meta": {
