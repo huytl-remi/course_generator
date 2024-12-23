@@ -170,6 +170,27 @@ RULES:
   - true/false statements
   - aim for as much as possible questions however it still much match the content real content depth
 
+DIFFICULTY DEFINITIONS:
+    BASIC:
+    - direct concept checks
+    - single-hop reasoning
+    - clear right/wrong answers
+
+    INTERMEDIATE:
+    - concept relationship checks
+    - two-hop reasoning chains
+    - requires understanding connections
+
+    ADVANCED:
+    - multi-hop reasoning
+    - complex scenario analysis
+    - requires synthesizing across lessons
+
+    focus on THEORETICAL understanding through:
+    - cause/effect chains
+    - concept interactions
+    - system-level thinking
+
 output format:
 {
    "questions": [
